@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser History Simulator — Doubly Linked List Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    /* Offline and Base Fallback Styles */
+    body {
+      margin: 0;
+      background-color: #030712;
+      color: #f3f4f6;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .node-card {
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .node-active {
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.6), 0 10px 25px -5px rgba(59, 130, 246, 0.4) !important;
+      border-color: #3b82f6 !important;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      height: 8px;
+      width: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.5);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: rgba(148, 163, 184, 0.7);
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 0.4; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .active-badge-pulse {
+      animation: pulse-ring 2s infinite ease-in-out;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.35;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col antialiased">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+    <div class="flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+        <i class="fa-solid fa-compass text-lg"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-base tracking-wide flex items-center gap-2">
+          Browser History Simulator
+          <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            Doubly Linked List (DLL)
+          </span>
+        </h1>
+        <p class="text-xs text-slate-400">Bidirectional Navigation • O(1) Back/Forward • Auto Forward Pruning</p>
+      </div>
+    </div>
+
+    <!-- Quick Stats & Actions -->
+    <div class="flex items-center gap-3 text-xs">
+      <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>http://localhost:5500</span>
+      </div>
+      <div class="bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 flex items-center gap-2">
+        <span class="text-slate-400">Nodes:</span>
+        <span id="stat-total-nodes" class="font-mono font-bold text-blue-400">1</span>
+      </div>
+      <div class="bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 flex items-center gap-2">
+        <span class="text-slate-400">Pos:</span>
+        <span id="stat-position" class="font-mono font-bold text-emerald-400">1/1</span>
+      </div>
+      <button id="btn-auto-demo" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/30 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-play text-xs"></i>
+        <span>Run Auto-Demo</span>
+      </button>
+      <button id="btn-reset-all" class="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-trash-can text-xs"></i> Reset
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+
+    <!-- SIMULATED BROWSER WINDOW -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+      <!-- Browser Top Chrome & Controls -->
+      <div class="bg-slate-900/90 border-b border-slate-800 p-3 space-y-2.5">
+        <!-- Controls Row -->
+        <div class="flex items-center gap-2">
+          <!-- Window traffic dots -->
+          <div class="flex items-center gap-1.5 mr-2">
+            <span class="w-3 h-3 rounded-full bg-rose-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-emerald-500/80 inline-block"></span>
+          </div>
+
+          <!-- Back Button -->
+          <button id="nav-back" class="p-2 w-9 h-9 rounded-lg flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700" title="Go Back in DLL (prev)">
+            <i class="fa-solid fa-arrow-left text-sm"></i>
+          </button>
+
+          <!-- Forward Button -->
+          <button id="nav-forward" class="p-2 w-9 h-9 rounded-lg flex items-center justify-center transition disabled:opacity-30 disabled:cursor-not-allowed bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700" title="Go Forward in DLL (next)">
+            <i class="fa-solid fa-arrow-right text-sm"></i>
+          </button>
+
+          <!-- Reload Button -->
+          <button id="nav-reload" class="p-2 w-9 h-9 rounded-lg flex items-center justify-center transition bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700" title="Reload active page">
+            <i class="fa-solid fa-rotate-right text-sm"></i>
+          </button>
+
+          <!-- Home Button -->
+          <button id="nav-home" class="p-2 w-9 h-9 rounded-lg flex items-center justify-center transition bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700" title="Visit Home">
+            <i class="fa-solid fa-house text-sm"></i>
+          </button>
+
+          <!-- Omnibox / Address Bar -->
+          <form id="url-form" class="flex-1 flex items-center gap-2">
+            <div class="flex-1 relative flex items-center">
+              <span class="absolute left-3 text-slate-500 text-xs">
+                <i class="fa-solid fa-lock text-emerald-400"></i>
+              </span>
+              <input
+                id="url-input"
+                type="text"
+                class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-24 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-mono transition"
+                placeholder="Enter URL e.g. https://github.com..."
+                required
+              />
+              <span id="url-badge" class="absolute right-2 px-2 py-0.5 rounded text-[11px] bg-slate-800 text-slate-400 font-sans border border-slate-700">
+                Enter ↵
+              </span>
+            </div>
+            <button
+              type="submit"
+              class="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm transition shadow-lg shadow-blue-600/30 flex items-center gap-1.5"
+            >
+              <span>Visit</span>
+              <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+            </button>
+          </form>
+        </div>
+
+        <!-- Bookmarks Bar / Quick Launch Links -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs text-slate-300">
+          <span class="text-slate-500 text-[11px] uppercase tracking-wider font-semibold mr-1 flex items-center gap-1">
+            <i class="fa-solid fa-bookmark text-amber-400"></i> Quick:
+          </span>
+          <button class="quick-link px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 transition flex items-center gap-1.5" data-url="https://google.com" data-title="Google Search">
+            <i class="fa-brands fa-google text-red-400"></i> Google
+          </button>
+          <button class="quick-link px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 transition flex items-center gap-1.5" data-url="https://github.com" data-title="GitHub">
+            <i class="fa-brands fa-github text-slate-200"></i> GitHub
+          </button>
+          <button class="quick-link px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 transition flex items-center gap-1.5" data-url="https://wikipedia.org" data-title="Wikipedia">
+            <i class="fa-brands fa-wikipedia-w text-slate-300"></i> Wikipedia
+          </button>
+          <button class="quick-link px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 transition flex items-center gap-1.5" data-url="https://youtube.com" data-title="YouTube">
+            <i class="fa-brands fa-youtube text-red-500"></i> YouTube
+          </button>
+          <button class="quick-link px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 transition flex items-center gap-1.5" data-url="https://stackoverflow.com" data-title="Stack Overflow">
+            <i class="fa-brands fa-stack-overflow text-orange-400"></i> Stack Overflow
+          </button>
+          <button class="quick-link px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 transition flex items-center gap-1.5" data-url="https://developer.mozilla.org" data-title="MDN Web Docs">
+            <i class="fa-solid fa-book-open text-cyan-400"></i> MDN Docs
+          </button>
+        </div>
+      </div>
+
+      <!-- Simulated Web Page Viewport -->
+      <div id="browser-viewport" class="p-6 md:p-8 bg-slate-950 min-h-[220px] flex flex-col justify-center items-center text-center relative">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- DOUBLY LINKED LIST VISUALIZER -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
+            <i class="fa-solid fa-link text-blue-400"></i>
+            Doubly Linked List Visual Structure
+          </h2>
+          <p class="text-xs text-slate-400">
+            Real-time memory pointer graph: <code class="text-blue-300">node.prev ⟵ [Data] ⟶ node.next</code>
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Step Multiplier Controls -->
+          <div class="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 text-xs">
+            <span class="px-2 text-slate-400">Jump Steps:</span>
+            <button class="step-btn px-2 py-0.5 rounded font-mono font-semibold bg-blue-600 text-white" data-steps="1">1</button>
+            <button class="step-btn px-2 py-0.5 rounded font-mono font-semibold text-slate-300 hover:text-white" data-steps="2">2</button>
+            <button class="step-btn px-2 py-0.5 rounded font-mono font-semibold text-slate-300 hover:text-white" data-steps="3">3</button>
+          </div>
+          <button id="btn-back-k" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 transition">
+            ◀ Back (1)
+          </button>
+          <button id="btn-forward-k" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 transition">
+            Forward (1) ▶
+          </button>
+        </div>
+      </div>
+
+      <!-- Visual Node Chain Container (Horizontal Scroll) -->
+      <div class="overflow-x-auto pb-4 pt-2 custom-scrollbar" id="dll-scroll-container">
+        <div id="dll-nodes-wrapper" class="flex items-center min-w-max gap-3 py-2 px-1">
+          <!-- Nodes injected via JS -->
+        </div>
+      </div>
+
+      <!-- Warning notification when branch causes pruning -->
+      <div id="prune-alert" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation text-amber-400 text-sm"></i>
+          <span id="prune-message">Forward history severed and pruned! Visiting a new link resets forward path.</span>
+        </div>
+        <span class="text-[11px] font-mono text-amber-400/80">DLL: current.next = null</span>
+      </div>
+    </div>
+
+    <!-- LOWER SECTION: DATA STRUCTURE SPECS & LOGS -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Operations & Memory Event Log -->
+      <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+          <h3 class="font-bold text-sm text-slate-200 flex items-center gap-2">
+            <i class="fa-solid fa-terminal text-emerald-400"></i>
+            Internal Pointer & Operation Log
+          </h3>
+          <button id="btn-clear-log" class="text-xs text-slate-400 hover:text-slate-200 transition">
+            Clear Log
+          </button>
+        </div>
+        <div id="operation-logs" class="space-y-1.5 font-mono text-xs max-h-56 overflow-y-auto custom-scrollbar pr-2 flex-1">
+          <!-- Logs injected here -->
+        </div>
+      </div>
+
+      <!-- DLL Time Complexity & Properties Card -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+        <h3 class="font-bold text-sm text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
+          <i class="fa-solid fa-microchip text-purple-400"></i>
+          Algorithm Complexity
+        </h3>
+
+        <div class="space-y-3 text-xs">
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+            <span class="text-slate-300 font-medium">Visit URL</span>
+            <span class="font-mono font-bold text-emerald-400 px-2 py-0.5 bg-emerald-500/10 rounded border border-emerald-500/20">O(1)</span>
+          </div>
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+            <span class="text-slate-300 font-medium">Back 1 step (<code class="text-blue-300">current.prev</code>)</span>
+            <span class="font-mono font-bold text-emerald-400 px-2 py-0.5 bg-emerald-500/10 rounded border border-emerald-500/20">O(1)</span>
+          </div>
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+            <span class="text-slate-300 font-medium">Forward 1 step (<code class="text-blue-300">current.next</code>)</span>
+            <span class="font-mono font-bold text-emerald-400 px-2 py-0.5 bg-emerald-500/10 rounded border border-emerald-500/20">O(1)</span>
+          </div>
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+            <span class="text-slate-300 font-medium">Jump <var>k</var> steps</span>
+            <span class="font-mono font-bold text-blue-400 px-2 py-0.5 bg-blue-500/10 rounded border border-blue-500/20">O(min(k, N))</span>
+          </div>
+          <div class="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+            <span class="text-slate-300 font-medium">Space Complexity</span>
+            <span class="font-mono font-bold text-purple-400 px-2 py-0.5 bg-purple-500/10 rounded border border-purple-500/20">O(N) nodes</span>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-blue-950/30 border border-blue-800/40 text-[11px] text-blue-300 leading-relaxed">
+          <strong class="text-blue-200">DLL Advantage:</strong> Unlike a single dynamic array where pruning requires shifting memory, a doubly linked list drops forward history by simply severing <code class="bg-blue-900/60 px-1 py-0.5 rounded">current.next = null</code> in constant time!
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800 bg-slate-900/60 px-6 py-4 text-center text-xs text-slate-500">
+    Interactive Browser History Prototype • Built with Doubly Linked List Architecture
+  </footer>
+
+  <!-- JAVASCRIPT IMPLEMENTATION -->
+  <script>
+    // ==========================================
+    // 1. DOUBLY LINKED LIST IMPLEMENTATION
+    // ==========================================
+
+    class HistoryNode {
+      constructor(url, title, timestamp = null) {
+        this.id = 'node_' + Math.random().toString(36).substr(2, 9);
+        this.url = url;
+        this.title = title || this.formatTitle(url);
+        this.timestamp = timestamp || new Date().toLocaleTimeString();
+        this.prev = null;
+        this.next = null;
+      }
+
+      formatTitle(url) {
+        try {
+          const u = new URL(url.startsWith('http') ? url : 'https://' + url);
+          const domain = u.hostname.replace('www.', '');
+          return domain.charAt(0).toUpperCase() + domain.slice(1);
+        } catch {
+          return url;
+        }
+      }
+    }
+
+    class BrowserHistorySimulator {
+      constructor(homepage = "https://google.com", title = "Google Search") {
+        const initialNode = new HistoryNode(homepage, title);
+        this.head = initialNode;
+        this.tail = initialNode;
+        this.current = initialNode;
+        this.size = 1;
+        this.logs = [];
+        this.addLog("SYSTEM", `Initialized Browser with Homepage: [${initialNode.title}] (${initialNode.url})`);
+      }
+
+      canGoBack() {
+        return this.current !== null && this.current.prev !== null;
+      }
+
+      canGoForward() {
+        return this.current !== null && this.current.next !== null;
+      }
+
+      getCurrentNode() {
+        return this.current;
+      }
+
+      /**
+       * Visiting a new page:
+       * If we are not at the tail (i.e. we went back in history and now click/type a new URL),
+       * the forward history MUST be discarded!
+       */
+      visit(url, title = "") {
+        let prunedCount = 0;
+
+        // Step 1: Discard forward history
+        if (this.current.next !== null) {
+          let forwardNode = this.current.next;
+          while (forwardNode !== null) {
+            prunedCount++;
+            const nxt = forwardNode.next;
+            forwardNode.prev = null;
+            forwardNode.next = null; // facilitate GC
+            forwardNode = nxt;
+          }
+
+          this.size -= prunedCount;
+          this.current.next = null;
+          this.tail = this.current;
+
+          this.addLog("PRUNE", `Severed and discarded ${prunedCount} forward history node(s). current.next = null;`);
+        }
+
+        // Step 2: Create new node
+        const newNode = new HistoryNode(url, title);
+
+        // Step 3: Link pointers
+        newNode.prev = this.current;
+        this.current.next = newNode;
+        this.current = newNode;
+        this.tail = newNode;
+        this.size++;
+
+        this.addLog("VISIT", `Visited [${newNode.title}] -> Linked (prev: ${newNode.prev.title}, next: null)`);
+        return { node: newNode, prunedCount };
+      }
+
+      /**
+       * Back navigation by k steps
+       */
+      back(steps = 1) {
+        if (!this.canGoBack() || steps < 1) return this.current;
+
+        let moved = 0;
+        const initialTitle = this.current.title;
+
+        while (moved < steps && this.current.prev !== null) {
+          this.current = this.current.prev;
+          moved++;
+        }
+
+        this.addLog("NAV_BACK", `Moved back ${moved} step(s): [${initialTitle}] ⟵ [${this.current.title}]`);
+        return this.current;
+      }
+
+      /**
+       * Forward navigation by k steps
+       */
+      forward(steps = 1) {
+        if (!this.canGoForward() || steps < 1) return this.current;
+
+        let moved = 0;
+        const initialTitle = this.current.title;
+
+        while (moved < steps && this.current.next !== null) {
+          this.current = this.current.next;
+          moved++;
+        }
+
+        this.addLog("NAV_FORWARD", `Moved forward ${moved} step(s): [${initialTitle}] ⟶ [${this.current.title}]`);
+        return this.current;
+      }
+
+      /**
+       * Jump directly to a node reference
+       */
+      jumpToNode(targetNode) {
+        if (!targetNode || targetNode === this.current) return;
+        const fromTitle = this.current.title;
+        this.current = targetNode;
+        this.addLog("JUMP", `Direct pointer jump: [${fromTitle}] ➔ [${targetNode.title}]`);
+      }
+
+      reset(homepage = "https://google.com", title = "Google Search") {
+        const initialNode = new HistoryNode(homepage, title);
+        this.head = initialNode;
+        this.tail = initialNode;
+        this.current = initialNode;
+        this.size = 1;
+        this.logs = [];
+        this.addLog("RESET", `History cleared. Reset to ${homepage}`);
+      }
+
+      addLog(action, details) {
+        const time = new Date().toLocaleTimeString();
+        this.logs.unshift({ action, details, time });
+        if (this.logs.length > 50) this.logs.pop();
+      }
+
+      getLinearList() {
+        const list = [];
+        let curr = this.head;
+        let index = 0;
+        while (curr !== null) {
+          list.push({
+            node: curr,
+            index: index,
+            isCurrent: curr === this.current,
+            isHead: curr === this.head,
+            isTail: curr === this.tail,
+          });
+          curr = curr.next;
+          index++;
+        }
+        return list;
+      }
+    }
+
+    // ==========================================
+    // 2. UI CONTROLLER & EVENT BINDINGS
+    // ==========================================
+
+    const simulator = new BrowserHistorySimulator("https://google.com", "Google Search");
+    let activeSteps = 1;
+
+    // DOM Elements
+    const urlInput = document.getElementById('url-input');
+    const urlForm = document.getElementById('url-form');
+    const navBack = document.getElementById('nav-back');
+    const navForward = document.getElementById('nav-forward');
+    const navReload = document.getElementById('nav-reload');
+    const navHome = document.getElementById('nav-home');
+    const browserViewport = document.getElementById('browser-viewport');
+    const dllNodesWrapper = document.getElementById('dll-nodes-wrapper');
+    const operationLogs = document.getElementById('operation-logs');
+    const statTotalNodes = document.getElementById('stat-total-nodes');
+    const statPosition = document.getElementById('stat-position');
+    const btnResetAll = document.getElementById('btn-reset-all');
+    const btnClearLog = document.getElementById('btn-clear-log');
+    const pruneAlert = document.getElementById('prune-alert');
+    const pruneMessage = document.getElementById('prune-message');
+    const btnBackK = document.getElementById('btn-back-k');
+    const btnForwardK = document.getElementById('btn-forward-k');
+    const stepButtons = document.querySelectorAll('.step-btn');
+
+    // Webpage Templates Generator
+    function getPageContent(url, title) {
+      const lowerUrl = url.toLowerCase();
+      let icon = "fa-globe";
+      let color = "text-blue-400";
+      let bgAccent = "from-blue-600/20 to-indigo-600/10";
+      let description = "Simulated Web Document loaded via Doubly Linked List node reference.";
+      let suggestions = [];
+
+      if (lowerUrl.includes("google")) {
+        icon = "fa-google";
+        color = "text-red-400";
+        bgAccent = "from-red-600/20 via-blue-600/10 to-yellow-600/10";
+        description = "World's most popular search engine. Explore knowledge, images, and tools.";
+        suggestions = [
+          { text: "Search: 'Doubly Linked List Visualizer'", url: "https://wikipedia.org/wiki/Doubly_linked_list", title: "Wikipedia: DLL" },
+          { text: "Search: 'GitHub Open Source'", url: "https://github.com", title: "GitHub" }
+        ];
+      } else if (lowerUrl.includes("github")) {
+        icon = "fa-github";
+        color = "text-slate-200";
+        bgAccent = "from-slate-700/40 to-slate-900/40";
+        description = "The world's leading AI-powered developer platform to build and ship software.";
+        suggestions = [
+          { text: "View: Browser History Repository", url: "https://github.com/topics/browser-history", title: "GitHub: Browser History" },
+          { text: "View: Stack Overflow DLL Q&A", url: "https://stackoverflow.com", title: "Stack Overflow" }
+        ];
+      } else if (lowerUrl.includes("wikipedia")) {
+        icon = "fa-wikipedia-w";
+        color = "text-slate-300";
+        bgAccent = "from-slate-800/40 to-zinc-900/40";
+        description = "A doubly linked list is a linked data structure with bidirectional pointers (prev and next).";
+        suggestions = [
+          { text: "Read: Data Structures and Algorithms", url: "https://developer.mozilla.org", title: "MDN: Data Structures" },
+          { text: "Watch: Linked List Video Guide", url: "https://youtube.com", title: "YouTube Video" }
+        ];
+      } else if (lowerUrl.includes("youtube")) {
+        icon = "fa-youtube";
+        color = "text-red-500";
+        bgAccent = "from-red-700/30 to-rose-950/40";
+        description = "Watch videos, tutorials, tech talks, and music streams.";
+        suggestions = [
+          { text: "Watch: Doubly Linked Lists in 5 Minutes", url: "https://youtube.com/watch?v=dll", title: "YouTube: DLL Tutorial" },
+          { text: "Back to Google Search", url: "https://google.com", title: "Google Search" }
+        ];
+      } else if (lowerUrl.includes("stackoverflow")) {
+        icon = "fa-stack-overflow";
+        color = "text-orange-400";
+        bgAccent = "from-orange-600/20 to-amber-950/40";
+        description = "Q&A Community for professional and enthusiast programmers.";
+        suggestions = [
+          { text: "Question: Why use DLL for browser history?", url: "https://developer.mozilla.org", title: "MDN Docs" },
+          { text: "Explore GitHub code snippets", url: "https://github.com", title: "GitHub" }
+        ];
+      } else if (lowerUrl.includes("mozilla") || lowerUrl.includes("developer")) {
+        icon = "fa-book-open";
+        color = "text-cyan-400";
+        bgAccent = "from-cyan-600/20 to-blue-950/40";
+        description = "MDN Web Docs: Documenting web technologies, APIs, and modern JavaScript standards.";
+        suggestions = [
+          { text: "Read: window.history API documentation", url: "https://wikipedia.org", title: "Wikipedia" },
+          { text: "Back to Home", url: "https://google.com", title: "Google Search" }
+        ];
+      }
+
+      return `
+        <div class="max-w-2xl w-full p-8 rounded-2xl bg-gradient-to-b ${bgAccent} border border-slate-800/80 shadow-inner space-y-4">
+          <div class="flex items-center justify-center gap-3">
+            <span class="w-12 h-12 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center ${color} text-2xl shadow">
+              <i class="fa-solid ${icon.startsWith('fa-') ? icon : 'fa-' + icon} ${icon.includes(' ') ? '' : (icon.startsWith('fa-brands') ? '' : (icon.startsWith('fa-solid') ? '' : (icon.includes('google') || icon.includes('github') || icon.includes('wikipedia') || icon.includes('youtube') || icon.includes('stack') ? 'fa-brands' : 'fa-solid')))}"></i>
+            </span>
+            <div class="text-left">
+              <h2 class="text-xl font-bold text-slate-100">${title}</h2>
+              <span class="text-xs font-mono text-slate-400 flex items-center gap-1">
+                <i class="fa-solid fa-link text-[10px] text-blue-400"></i> ${url}
+              </span>
+            </div>
+          </div>
+
+          <p class="text-sm text-slate-300 leading-relaxed">${description}</p>
+
+          ${suggestions.length > 0 ? `
+            <div class="pt-3 border-t border-slate-800/80">
+              <span class="text-xs text-slate-400 block mb-2 font-medium">Click simulated links to navigate (calls <code class="text-blue-300">visit()</code>):</span>
+              <div class="flex flex-wrap gap-2 justify-center">
+                ${suggestions.map(s => `
+                  <button class="page-link text-xs px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-blue-400 hover:text-blue-300 transition flex items-center gap-1.5" data-url="${s.url}" data-title="${s.title}">
+                    <i class="fa-solid fa-arrow-turn-down text-[10px] text-slate-500"></i>
+                    <span>${s.text}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // Render Everything
+    function updateUI(prunedCount = 0) {
+      const current = simulator.getCurrentNode();
+      const list = simulator.getLinearList();
+      const currentIndex = list.findIndex(item => item.isCurrent);
+
+      // 1. Update Navigation Buttons
+      navBack.disabled = !simulator.canGoBack();
+      navForward.disabled = !simulator.canGoForward();
+      btnBackK.disabled = !simulator.canGoBack();
+      btnForwardK.disabled = !simulator.canGoForward();
+
+      // Tooltips with step preview
+      if (simulator.canGoBack()) {
+        navBack.title = `Back to: ${current.prev.title} (${current.prev.url})`;
+      } else {
+        navBack.title = "Can't go back (At Head of DLL)";
+      }
+
+      if (simulator.canGoForward()) {
+        navForward.title = `Forward to: ${current.next.title} (${current.next.url})`;
+      } else {
+        navForward.title = "Can't go forward (At Tail of DLL)";
+      }
+
+      // 2. Update Omnibox URL
+      urlInput.value = current.url;
+
+      // 3. Update Stats
+      statTotalNodes.innerText = simulator.size;
+      statPosition.innerText = `${currentIndex + 1} of ${simulator.size}`;
+
+      // 4. Update Viewport
+      browserViewport.innerHTML = getPageContent(current.url, current.title);
+
+      // Re-bind in-page links
+      document.querySelectorAll('.page-link').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const targetUrl = btn.getAttribute('data-url');
+          const targetTitle = btn.getAttribute('data-title');
+          const res = simulator.visit(targetUrl, targetTitle);
+          updateUI(res.prunedCount);
+        });
+      });
+
+      // 5. Update DLL Visualizer Nodes
+      renderDLLGraph(list, currentIndex);
+
+      // 6. Update Prune Alert
+      if (prunedCount > 0) {
+        pruneMessage.innerText = `Branching detected: Discarded ${prunedCount} forward history node(s) from current position.`;
+        pruneAlert.classList.remove('hidden');
+        setTimeout(() => {
+          pruneAlert.classList.add('hidden');
+        }, 5000);
+      }
+
+      // 7. Render Logs
+      renderLogs();
+    }
+
+    // Render the visual Doubly Linked List with pointers
+    function renderDLLGraph(list, currentIndex) {
+      dllNodesWrapper.innerHTML = '';
+
+      list.forEach((item, idx) => {
+        const isCurrent = item.isCurrent;
+        const isPast = idx < currentIndex;
+        const isFuture = idx > currentIndex;
+
+        // Container for Node + Connector
+        const nodeWrapper = document.createElement('div');
+        nodeWrapper.className = 'flex items-center';
+
+        // The Node Card
+        const card = document.createElement('div');
+        card.className = `node-card relative w-56 rounded-xl border p-3 flex flex-col justify-between text-left cursor-pointer transition select-none ${
+          isCurrent 
+            ? 'bg-blue-950/60 border-blue-500 node-active ring-2 ring-blue-500/50' 
+            : isPast 
+              ? 'bg-slate-900 border-slate-700/80 hover:border-slate-500' 
+              : 'bg-slate-900/60 border-amber-500/40 hover:border-amber-400/70 border-dashed'
+        }`;
+
+        card.innerHTML = `
+          <!-- Top Row: Index & Pointer tags -->
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded ${
+              isCurrent 
+                ? 'bg-blue-600 text-white font-bold' 
+                : 'bg-slate-800 text-slate-400'
+            }">
+              Node #${idx}
+            </span>
+            ${isCurrent ? `
+              <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 active-badge-pulse">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ACTIVE
+              </span>
+            ` : isFuture ? `
+              <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                Forward (Next)
+              </span>
+            ` : `
+              <span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">
+                History (Prev)
+              </span>
+            `}
+          </div>
+
+          <!-- Middle: Title and URL -->
+          <div class="mb-2">
+            <h4 class="font-bold text-xs truncate ${isCurrent ? 'text-blue-200' : 'text-slate-200'}">
+              ${item.node.title}
+            </h4>
+            <p class="text-[11px] font-mono text-slate-400 truncate" title="${item.node.url}">
+              ${item.node.url}
+            </p>
+          </div>
+
+          <!-- Pointer Details -->
+          <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <span title="prev pointer">
+              <i class="fa-solid fa-arrow-left text-slate-500"></i> ${item.node.prev ? '#' + (idx - 1) : 'null (HEAD)'}
+            </span>
+            <span title="next pointer">
+              ${item.node.next ? '#' + (idx + 1) : 'null (TAIL)'} <i class="fa-solid fa-arrow-right text-slate-500"></i>
+            </span>
+          </div>
+        `;
+
+        // Click to jump
+        card.addEventListener('click', () => {
+          simulator.jumpToNode(item.node);
+          updateUI();
+        });
+
+        nodeWrapper.appendChild(card);
+
+        // Bi-directional arrow connector between nodes
+        if (idx < list.length - 1) {
+          const connector = document.createElement('div');
+          connector.className = 'flex flex-col items-center justify-center px-1 text-slate-500';
+          connector.innerHTML = `
+            <div class="flex items-center gap-1 font-mono text-xs font-bold text-slate-400">
+              <span class="text-blue-400">⟵</span>
+              <span class="w-3 h-0.5 bg-slate-600"></span>
+              <span class="text-emerald-400">⟶</span>
+            </div>
+            <span class="text-[9px] font-mono text-slate-500">prev / next</span>
+          `;
+          nodeWrapper.appendChild(connector);
+        }
+
+        dllNodesWrapper.appendChild(nodeWrapper);
+      });
+
+      // Auto-scroll the active node into view
+      setTimeout(() => {
+        const activeCard = dllNodesWrapper.querySelector('.node-active');
+        if (activeCard) {
+          activeCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+      }, 50);
+    }
+
+    // Render Event Logs
+    function renderLogs() {
+      operationLogs.innerHTML = '';
+      simulator.logs.forEach(log => {
+        const row = document.createElement('div');
+        row.className = 'flex items-start gap-2 py-1 border-b border-slate-800/50';
+
+        let badgeColor = 'bg-slate-800 text-slate-300';
+        if (log.action === 'VISIT') badgeColor = 'bg-blue-500/20 text-blue-400 border border-blue-500/30';
+        else if (log.action === 'NAV_BACK') badgeColor = 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
+        else if (log.action === 'NAV_FORWARD') badgeColor = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        else if (log.action === 'PRUNE') badgeColor = 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+        else if (log.action === 'RESET') badgeColor = 'bg-rose-500/20 text-rose-400 border border-rose-500/30';
+        else if (log.action === 'JUMP') badgeColor = 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30';
+
+        row.innerHTML = `
+          <span class="text-slate-500 text-[10px] whitespace-nowrap">${log.time}</span>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${badgeColor} whitespace-nowrap">${log.action}</span>
+          <span class="text-slate-300 text-[11px] break-all">${log.details}</span>
+        `;
+        operationLogs.appendChild(row);
+      });
+    }
+
+    // ==========================================
+    // 3. EVENT LISTENERS
+    // ==========================================
+
+    // URL Submit
+    urlForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      let inputVal = urlInput.value.trim();
+      if (!inputVal) return;
+      if (!inputVal.startsWith('http://') && !inputVal.startsWith('https://')) {
+        inputVal = 'https://' + inputVal;
+      }
+      const res = simulator.visit(inputVal);
+      updateUI(res.prunedCount);
+    });
+
+    // Navigation Buttons
+    navBack.addEventListener('click', () => {
+      simulator.back(1);
+      updateUI();
+    });
+
+    navForward.addEventListener('click', () => {
+      simulator.forward(1);
+      updateUI();
+    });
+
+    navReload.addEventListener('click', () => {
+      const curr = simulator.getCurrentNode();
+      simulator.addLog("RELOAD", `Reloaded: [${curr.title}]`);
+      updateUI();
+    });
+
+    navHome.addEventListener('click', () => {
+      const res = simulator.visit("https://google.com", "Google Search");
+      updateUI(res.prunedCount);
+    });
+
+    // Multi-step back / forward
+    btnBackK.addEventListener('click', () => {
+      simulator.back(activeSteps);
+      updateUI();
+    });
+
+    btnForwardK.addEventListener('click', () => {
+      simulator.forward(activeSteps);
+      updateUI();
+    });
+
+    // Step multipliers
+    stepButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        stepButtons.forEach(b => {
+          b.classList.remove('bg-blue-600', 'text-white');
+          b.classList.add('text-slate-300');
+        });
+        btn.classList.add('bg-blue-600', 'text-white');
+        btn.classList.remove('text-slate-300');
+        activeSteps = parseInt(btn.getAttribute('data-steps'));
+        btnBackK.innerText = `◀ Back (${activeSteps})`;
+        btnForwardK.innerText = `Forward (${activeSteps}) ▶`;
+      });
+    });
+
+    // Quick Bookmarks
+    document.querySelectorAll('.quick-link').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.getAttribute('data-url');
+        const title = btn.getAttribute('data-title');
+        const res = simulator.visit(url, title);
+        updateUI(res.prunedCount);
+      });
+    });
+
+    // Reset All
+    btnResetAll.addEventListener('click', () => {
+      if (confirm("Reset browser history to new tab?")) {
+        simulator.reset();
+        updateUI();
+      }
+    });
+
+    // Clear Logs
+    btnClearLog.addEventListener('click', () => {
+      simulator.logs = [];
+      renderLogs();
+    });
+
+    // Keyboard Shortcuts: Alt+Left for back, Alt+Right for forward
+    window.addEventListener('keydown', (e) => {
+      if (e.altKey && e.key === 'ArrowLeft') {
+        if (simulator.canGoBack()) {
+          simulator.back(1);
+          updateUI();
+        }
+      } else if (e.altKey && e.key === 'ArrowRight') {
+        if (simulator.canGoForward()) {
+          simulator.forward(1);
+          updateUI();
+        }
+      }
+    });
+
+    // Auto-Demo Simulation Runner
+    const btnAutoDemo = document.getElementById('btn-auto-demo');
+    let isRunningDemo = false;
+
+    async function runAutoDemo() {
+      if (isRunningDemo) return;
+      isRunningDemo = true;
+      btnAutoDemo.disabled = true;
+      btnAutoDemo.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Demo Playing...';
+
+      const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+      // Reset
+      simulator.reset("https://google.com", "Google Search");
+      updateUI();
+      await delay(1000);
+
+      // Step 1: Visit GitHub
+      let res = simulator.visit("https://github.com", "GitHub");
+      updateUI(res.prunedCount);
+      await delay(1200);
+
+      // Step 2: Visit Wikipedia
+      res = simulator.visit("https://wikipedia.org", "Wikipedia");
+      updateUI(res.prunedCount);
+      await delay(1200);
+
+      // Step 3: Visit YouTube
+      res = simulator.visit("https://youtube.com", "YouTube");
+      updateUI(res.prunedCount);
+      await delay(1400);
+
+      // Step 4: Step Back to Wikipedia
+      simulator.back(1);
+      updateUI();
+      await delay(1200);
+
+      // Step 5: Step Back to GitHub
+      simulator.back(1);
+      updateUI();
+      await delay(1400);
+
+      // Step 6: Branch visit StackOverflow -> Wikipedia & YouTube will be pruned!
+      res = simulator.visit("https://stackoverflow.com", "Stack Overflow");
+      updateUI(res.prunedCount);
+      await delay(1000);
+
+      btnAutoDemo.disabled = false;
+      btnAutoDemo.innerHTML = '<i class="fa-solid fa-play text-xs"></i> <span>Run Auto-Demo</span>';
+      isRunningDemo = false;
+    }
+
+    if (btnAutoDemo) {
+      btnAutoDemo.addEventListener('click', runAutoDemo);
+    }
+
+    // Initial Render
+    updateUI();
+  </script>
+</body>
+</html>
